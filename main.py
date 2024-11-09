@@ -4,6 +4,7 @@ import asyncio
 from re import split
 import interactions
 import discord
+from dotenv import load_dotenv
 from discord.ext import commands
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
@@ -14,9 +15,12 @@ import re
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from PIL import Image, ImageDraw, ImageFont
 
+load_dotenv()
+
 intents = discord.Intents.all()
 intents.message_content = True
 bot = commands.Bot(command_prefix='$',
+                   help_command=None,
                    description='生活中必不可少的司君.',
                    intents=intents)
 
@@ -330,13 +334,13 @@ async def reg(ctx, *, skill_info: str):
 
 
     if not spreadsheet_id:
-        await ctx.send("请先使用 $sheet 创建一个Google Sheet.")
+        await ctx.send("Please first type $sheet to create a Google Sheet.")
         return
 
     # Parse user input
     components = skill_info.split()
     if len(components) != 8:
-        await ctx.send("格式错误。请按照以下格式注册：暱称 身份 综合 技能（队长+4队员）")
+        await ctx.send("Wrong format. \n Please register using: Nickname h/r(helper/runner) Power Skill(Leader + 4 member cards) \n E.g. $reg Tsukasa h 33.5 150 150 150 150 150")
         return
 
     name, role, power, *skills = components
@@ -344,7 +348,7 @@ async def reg(ctx, *, skill_info: str):
     try:
         skills = [int(x) for x in skills]
     except ValueError:
-        await ctx.send("技能值错误. 请提供5个技能值.")
+        await ctx.send("Wrong ISV. Please provide 5 skills.")
         return
 
     skill_sum = calculate_skill_sum(skills)
@@ -382,7 +386,7 @@ async def reg(ctx, *, skill_info: str):
                     "values": [user_profile]
                 }).execute()
             await ctx.send(
-                f"更新成功！:tada:\n暱称: {name}\n身份: {role}\n综合力: {power}\n内部值: {skill_sum}\n倍率: {skill_mult:.2f}"
+                f"Updated successfully！:tada:\nName: {name}\nType: {role}\nPower: {power}\nISV total: {skill_sum}\nISV: {skill_mult:.2f}"
             )
         else:
             # Append new profile if user doesn't exist
@@ -395,11 +399,11 @@ async def reg(ctx, *, skill_info: str):
                     "values": [user_profile]
                 }).execute()
             await ctx.send(
-                f"录入成功！:tada:\n暱称: {name}\n身份: {role}\n综合力: {power}\n内部值: {skill_sum}\n倍率: {skill_mult:.2f}"
+                f"Registered successfully！:tada:\nName: {name}\nType: {role}\nPower: {power}\nISV total: {skill_sum}\nISV: {skill_mult:.2f}"
             )
 
     except Exception as e:
-        await ctx.send(f"无法保存到Google Sheet: {str(e)}")
+        await ctx.send(f"Cannot be written to Google Sheet: {str(e)}")
 
 
 @bot.command()
@@ -594,17 +598,22 @@ async def add_user(ctx, *args):
     # Parse the time range (e.g., 10-15) into start and end hours
     try:
         start_time_str, end_time_str = time_range.split('-')
+        num_slot = int(end_time_str)-int(start_time_str)
         start_time = datetime.strptime(start_time_str, "%H")
-        end_time = datetime.strptime(end_time_str, "%H")
+        
+        #print("number of slots to fill:", num_slot)
+        #end_time = datetime.strptime(end_time_str,"%H")
+        #pritn("end time: ", end_time)
+
     except ValueError:
         await ctx.send(
             "Invalid time range format. Please use <start_time>-<end_time> (e.g., 10-15)."
         )
         return
 
-    if start_time >= end_time:
-        await ctx.send("Start time must be earlier than end time.")
-        return
+    # if start_time >= end_time:
+    #     await ctx.send("Start time must be earlier than end time.")
+    #     return
 
     # Find the row for the specified date in column A
     sheet_range = "schedule!A:B"
@@ -627,14 +636,11 @@ async def add_user(ctx, *args):
     new_date = target_date + timedelta(days=1)
     new_date = new_date.strftime("%m-%d")
 
-    while current_time < end_time:
-        next_time = current_time + timedelta(hours=1)
-        time_slot = f"{current_time.strftime('%H')}-{next_time.strftime('%H')}"
-        print("time slot:", time_slot)
+    next_time = current_time + timedelta(hours=1)
+    time_slot = f"{current_time.strftime('%H')}-{next_time.strftime('%H')}"
 
-        # Find the row for the date and check if the time slot exists
-        row_number = None
-        for i in range(date_row_start - 1,
+    row_number = None
+    for i in range(date_row_start - 1,
                        len(values)):  # Adjust for 0-based index
             row = values[i]
             if row and row[
@@ -645,30 +651,55 @@ async def add_user(ctx, *args):
                 row_number = i + 1  # Convert to 1-based index for Google Sheets
                 break
 
-        if row_number is None:
-            await ctx.send(
-                f"Time slot {time_slot} not found for date {date_str}.")
-            return
+    if row_number is None:
+        await ctx.send(
+            f"Time slot {time_slot} not found for date {date_str}.")
+        return    
+    
+# Find the first slot
+# then find the first available column
+# go to next slot
+#find the fist available column
+    for slot in range(1,num_slot+1):
 
         # Find the next available column starting from F (index 6) in the located row
-        sheet_range_row = f"schedule!G{row_number}:J{row_number}"
+        sheet_range_row = f"schedule!G{row_number}:Z{row_number}"
         result = sheets_service.spreadsheets().values().get(
             spreadsheetId=spreadsheet_id, range=sheet_range_row).execute()
 
+        result2 = sheets_service.spreadsheets().values().get(
+            spreadsheetId=spreadsheet_id, range=f"schedule!B{row_number}").execute()
+
+        timepoint = result2.get('values',[])
+
         current_values = result.get('values', [])
+        print(f"current values: {current_values}")
         col_index = None
         if current_values:
             current_values = current_values[0]
+            print(f"current values: {current_values}")
             for j, value in enumerate(current_values, start=7):
-                if not value:  # Empty cell found
-                    col_index = j + 1
+                print(j)
+                print(value)
+                if value == "":
+                    col_index = j
                     break
+                if value == user_name:
+                    #col_index = None
+                    await ctx.send(
+                        f"You have already added on {date_str} at {''.join(timepoint[0])}."
+                    )
+                    return
+                if value and value!="":  # Empty cell found
+                    col_index = j + 1
+                
+
         else:
             col_index = 7
 
         if col_index is None:
             await ctx.send(
-                f"Cannot add {user_name} on {date_str} at {time_slot}"
+                f"Error: Cannot add {user_name} on {date_str} at {time_range}. Please check your time period. "
             )
             return
 
@@ -683,7 +714,8 @@ async def add_user(ctx, *args):
             }).execute()
 
         # Move to the next time slot
-        current_time = next_time
+        row_number += 1
+
 
     await ctx.send(
         f"{user_name} added to schedule on {date_str} for time slots {time_range}."
@@ -744,17 +776,18 @@ async def remove_user(ctx, *args):
     # Parse the time range (e.g., 10-15) into start and end hours
     try:
         start_time_str, end_time_str = time_range.split('-')
+        num_slot = int(end_time_str)-int(start_time_str)
         start_time = datetime.strptime(start_time_str, "%H")
-        end_time = datetime.strptime(end_time_str, "%H")
+        #end_time = datetime.strptime(end_time_str, "%H")
     except ValueError:
         await ctx.send(
             "Invalid time range format. Please use <start_time>-<end_time> (e.g., 10-15)."
         )
         return
 
-    if start_time >= end_time:
-        await ctx.send("Start time must be earlier than end time.")
-        return
+    # if start_time >= end_time:
+    #     await ctx.send("Start time must be earlier than end time.")
+    #     return
 
     # Find the row for the specified date in column A
     sheet_range = "schedule!A:B"
@@ -776,28 +809,26 @@ async def remove_user(ctx, *args):
     current_time = start_time
     new_date = target_date + timedelta(days=1)
     new_date = new_date.strftime("%m-%d")
-    while current_time < end_time:
-        next_time = current_time + timedelta(hours=1)
-        time_slot = f"{current_time.strftime('%H')}-{next_time.strftime('%H')}"
+
+    next_time = current_time + timedelta(hours=1)
+    time_slot = f"{current_time.strftime('%H')}-{next_time.strftime('%H')}"
+    
+    row_number = None
+    for i in range(date_row_start - 1,
+                    len(values)):  # Adjust for 0-based index
+        row = values[i]
+        if row and len(row) > 1 and row[1] == time_slot:  # Check column B for time slot
+            row_number = i + 1  # Convert to 1-based index for Google Sheets
+            break
+
+    if row_number is None:
+        await ctx.send(
+            f"Time slot {time_slot} not found for date {date_str}.")
+        return
+
+
+    for slot in range(1,num_slot+1):     
         print("time slot:", time_slot)
-
-        # Find the row for the date and check if the time slot exists
-        row_number = None
-        for i in range(date_row_start - 1,
-                       len(values)):  # Adjust for 0-based index
-            row = values[i]
-            if row and row[
-                    0] == new_date:  # Stop if a new date is found in column A
-                break
-            if row and len(row) > 1 and row[
-                    1] == time_slot:  # Check column B for time slot
-                row_number = i + 1  # Convert to 1-based index for Google Sheets
-                break
-
-        if row_number is None:
-            await ctx.send(
-                f"Time slot {time_slot} not found for date {date_str}.")
-            return
 
         # Find the column containing the user's name
         print("row number: ", row_number)
@@ -834,7 +865,7 @@ async def remove_user(ctx, *args):
             }).execute()
 
         # Move to the next time slot
-        current_time = next_time
+        row_number +=1
 
     await ctx.send(
         f"{user_name} removed from schedule on {date_str} for time slots {time_range}."
@@ -912,26 +943,33 @@ def get_sheet_formatting(spreadsheet_id, sheet_id, sheets_service):
     # Request cell formatting information from Google Sheets
     result = sheets_service.spreadsheets().get(
         spreadsheetId=spreadsheet_id,
-        fields=
-        "sheets(data(rowData(values(userEnteredFormat(backgroundColor)))))",
+        fields="sheets(data(rowData(values(userEnteredFormat(backgroundColor,textFormat)))))",
         ranges=f"{sheet_id}!A:J"  # Adjust range as needed
     ).execute()
 
-    # Extract background color data
+    # Extract background and text color data
     color_map = {}
     try:
         # Iterate through each row and each cell in the row
-        for row_index, row in enumerate(
-                result["sheets"][0]["data"][0]["rowData"]):
+        for row_index, row in enumerate(result["sheets"][0]["data"][0]["rowData"]):
             for col_index, cell in enumerate(row.get("values", [])):
-                if "userEnteredFormat" in cell and "backgroundColor" in cell[
-                        "userEnteredFormat"]:
-                    bg_color = cell["userEnteredFormat"]["backgroundColor"]
-                    # Convert Google Sheets color format to RGB tuple (scaled to 255)
-                    r = int((bg_color.get("red", 1) * 255))
-                    g = int((bg_color.get("green", 1) * 255))
-                    b = int((bg_color.get("blue", 1) * 255))
-                    color_map[(row_index, col_index)] = (r, g, b)
+                bg_color = cell.get("userEnteredFormat", {}).get("backgroundColor", {})
+                text_color = cell.get("userEnteredFormat", {}).get("textFormat", {}).get("foregroundColor", {})
+                
+                # Convert colors to RGB tuples (scaled to 255)
+                background_rgb = (
+                    int(bg_color.get("red", 1) * 255),
+                    int(bg_color.get("green", 1) * 255),
+                    int(bg_color.get("blue", 1) * 255)
+                )
+                text_rgb = (
+                    int(text_color.get("red", 0) * 255),
+                    int(text_color.get("green", 0) * 255),
+                    int(text_color.get("blue", 0) * 255)
+                )
+
+                # Store both background and text colors in the color map
+                color_map[(row_index, col_index)] = {"background": background_rgb, "text": text_rgb}
     except KeyError:
         print("Error: Failed to parse the sheet's formatting.")
 
@@ -942,12 +980,9 @@ def get_sheet_formatting(spreadsheet_id, sheet_id, sheets_service):
 def create_image_from_data(data, highlight_colors):
     # Basic settings for image
     try:
-        font = ImageFont.truetype(
-            "www/fonts/NotoSansSC-Regular.ttf",
-            18)  # Use a system font for better readability
+        font = ImageFont.truetype("www/fonts/NotoSansSC-Regular.ttf", 18)
     except IOError:
-        font = ImageFont.load_default(
-        )  # Fallback to default font if arial is not available
+        font = ImageFont.load_default()
 
     row_height = 30  # Increase for better spacing
     col_width = 120  # Adjust column width for readability
@@ -973,42 +1008,38 @@ def create_image_from_data(data, highlight_colors):
             draw.rectangle([padding, y, image_width - padding, y + row_height],
                            fill=header_color)
 
-            # Draw each cell with text centered and an outline border
-        for j in range(
-                max_columns
-        ):  # Ensure we iterate over all columns, even empty ones
+        for j in range(max_columns):  # Ensure we iterate over all columns, even empty ones
             x = j * col_width + padding
-            cell_text = str(row[j]) if j < len(
-                row) and row[j] is not None else ""  # Handle empty cells
+            cell_text = str(row[j]) if j < len(row) and row[j] is not None else ""
 
-            # Determine cell background color
-            if (i, j) in highlight_colors:
-                fill_color = highlight_colors[(
-                    i, j)]  # Use color from Google Sheets
-            else:
-                fill_color = "white"
+            # Determine cell background and text colors
+            cell_colors = highlight_colors.get((i, j), {"background": "white", "text": "black"})
+            fill_color = cell_colors["background"]
+            text_color = cell_colors["text"]
 
             # Draw cell background color
             draw.rectangle([x, y, x + col_width, y + row_height],
                            fill=fill_color,
                            outline=line_color)
 
-            # Measure text size to center it using textbbox
+            # Measure text size to center it
             bbox = draw.textbbox((0, 0), cell_text, font=font)
             text_width = bbox[2] - bbox[0]
             text_height = bbox[3] - bbox[1]
             text_x = x + (col_width - text_width) / 2
             text_y = y + (row_height - text_height) / 2
-            draw.text((text_x, text_y), cell_text, fill="black", font=font)
+
+            # Draw text with specified color
+            draw.text((text_x, text_y), cell_text, fill=text_color, font=font)
 
             # Draw the border around each cell
-            draw.rectangle([x, y, x + col_width, y + row_height],
-                           outline=line_color)
+            draw.rectangle([x, y, x + col_width, y + row_height], outline=line_color)
 
     # Save the image
     image_path = "/tmp/sheet_table.png"
     image.save(image_path)
     return image_path
+
 
 
 #$s to retrive current date image
@@ -1086,7 +1117,7 @@ async def set_alert(ctx, channel: discord.TextChannel, mins: int):
         bot.loop.create_task(send_alerts())
 
     await ctx.send(
-        f"Alert set for {mins} minutes before events in {channel.mention}.")
+        f"Alert set for {mins} minutes before schedules in {channel.mention}.")
 
 async def send_alerts():
     global alerting_active
@@ -1184,7 +1215,7 @@ async def send_alerts():
                         print("Alert sent for:", event_time_key)
 
         # Wait for 10 minutes before checking again
-        await asyncio.sleep(600)  # Sleep for 10 minutes (600 seconds)
+        await asyncio.sleep(120)  # Sleep for 10 minutes (600 seconds)
 
 
 
@@ -1199,27 +1230,50 @@ async def stop_alerts(ctx):
 #------------------------HELP Documentation------------------------
 
 
-@bot.command(name='h', help='Displays all available commands and their documentation.')
+@bot.command(name='help', aliases=['h'], help='Displays all available commands and their documentation.')
 async def help(ctx):
-    # Define documentation for each command
-    commands_info = {
-        "$reg <Nickname> <h/r(helper/runner)> <Power> <ISV(leader+4 members)>": "Registers or updates your profile. \n Example: '$reg Tsukasa h 33.5 150 150 150 150 150'.",
-        "$edit": "DMs you to request your email, then adds it with write permissions to the Google Sheet.",
-        "$add_schedule <n>": "Generates a schedule for <n> days and adds it to the Google Sheet.",
-        "$add <time-period>": "Adds you to a specified time slot on the schedule. Format: '21-22' or 't+<n> <time-period>'.\n Aliases: $a, $+",
-        "$rm <time-period>": "Remove you from a specified time slot on the schedule. Format: '21-22' or 't+<n> <time-period>'.\n Aliases: $sub, $-",
-        "$create_schedule <days>": "Creates a new schedule with time slots for the specified number of days.",
-        "$s <date-index>": "Request schedule on specific date. Format: 't+<n>'. If nothing, returns today's schedule."
+    # Define documentation categories with commands
+    categories = {
+        "⭐ Basic Commands": {
+            "$reg <Nickname> <h/r(helper/runner)> <Power> <Skill(leader+4 members)>": 
+                "Registers or updates your profile.\nExample: `$reg Tsukasa h 33.5 150 150 150 150 150`",
+            "$edit": "DMs you to request your email, then adds it with write permissions to the Google Sheet.",
+            "$create_schedule <days>": "Creates a new schedule with time slots for the specified number of days.\n\n"
+        },
+        "📆 Schedule Management": {
+            "$add_schedule <n>": "Generates a schedule for <n> days and adds it to the Google Sheet.",
+            "$add <time-period>": 
+                "Adds you to a specified time slot on the schedule.\nExample: `$add 21-23`, `$+ t+1 4-6`.\nAliases: `$a`, `$+`",
+            "$rm <time-period>": 
+                "Removes you from a specified time slot on the schedule.\nExample: `$rm 21-23`, `$- t+1 4-6`.\nAliases: `$sub`, `$-`",
+            "$s <date-index>": 
+                "Requests the schedule for a specific date.\nExample: `$s t+1`. If nothing is provided, returns today's schedule."
+        }
     }
 
     # Create an embedded message
-    embed = discord.Embed(title="📜 Available Commands", description="You can interact with Tsukasa in the following ways:", color=0x00ffcc)
+    embed = discord.Embed(
+        title="Tsukasa Help",
+        description="You can interact with Tsukasa in the following ways:",
+        color=0x00ffcc
+    )
 
-    # Add each command and its description as a field in the embed
-    for command, description in commands_info.items():
-        embed.add_field(name=f"`{command}`", value=description, inline=False)
+    # Add each category and its commands as fields in the embed
+    for category, commands in categories.items():
+        category_content = ""
+        for command, description in commands.items():
+            category_content += f"**※ `{command}`**\n{description}\n\n"
+        embed.add_field(name=category, value=category_content, inline=False)
+
+    # Add a footer for additional info
+    # embed.add_field(
+    #     name="Help Documentation",
+    #     value="[Tsukasa Bot Docs](https://bot.lxns.org/docs/)",
+    #     inline=False
+    # )
+    embed.set_footer(text="ツカサ ロボ 2024.")
 
     # Send the embedded help message
     await ctx.send(embed=embed)
 
-bot.run(os.getenv('TOKEN'))
+bot.run(os.getenv('DISCORD_TOKEN'))

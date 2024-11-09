@@ -1,0 +1,5 @@
+discord-py-interactions
+discord.py
+google-api-python-client
+google-auth
+apscheduler
