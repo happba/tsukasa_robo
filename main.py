@@ -14,6 +14,7 @@ import pytz
 import re
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from PIL import Image, ImageDraw, ImageFont
+import tempfile
 
 load_dotenv()
 
@@ -889,7 +890,7 @@ def get_sheet_data(spreadsheet_id, date):
     date_row_end = 0
 
     current_date = date.strftime("%m-%d")
-    print("Current date:", current_date)
+    #print("Current date:", current_date)
 
     new_date = date + timedelta(days=1)
     new_date_str = new_date.strftime("%m-%d")
@@ -936,42 +937,97 @@ def get_sheet_data(spreadsheet_id, date):
 
     return matching_rows
 
+def get_row_ranges(spreadsheet_id, date):
+    date_row_start = 0
+    date_row_end = 0
+
+    current_date = date.strftime("%m-%d")
+    #print("Current date:", current_date)
+
+    new_date = date + timedelta(days=1)
+    new_date_str = new_date.strftime("%m-%d")
+
+    sheet_range = "schedule"  # Adjust as necessary
+    result = sheets_service.spreadsheets().values().get(
+        spreadsheetId=spreadsheet_id, range=sheet_range).execute()
+    values = result.get("values", [])
+
+    # Check if there is data
+    if not values:
+        return []
+
+        # The first row is the header
+    header = values[0]
+    matching_rows = [header]  # Start with the header row included
+
+    # Get total number of rows
+    nrows = get_sheet_row_count(spreadsheet_id, "schedule")
+
+    # Find start and end rows
+    for i, row in enumerate(
+            values[1:],
+            start=2):  # Start from 2 to match Google Sheets indexing
+        if row and row[0] == current_date and date_row_start == 0:
+            date_row_start = i
+        if row and row[0] == new_date_str:
+            date_row_end = i - 1
+            break
+
+    # If new_date wasn't found, use the last row as end
+    if date_row_end == 0:
+        date_row_end = nrows
+
+        # Define the range to retrieve rows between date_row_start and date_row_end
+    sheet_range_now = f"schedule!A{date_row_start}:J{date_row_end}"
+    
+    return sheet_range_now
+
 
 #---------------------------Generate image to send to discord-----------------
 # Function to retrieve Google Sheets cell formatting (optional)
-def get_sheet_formatting(spreadsheet_id, sheet_id, sheets_service):
+def get_sheet_formatting(spreadsheet_id, sheet_id, sheets_service,range):
     # Request cell formatting information from Google Sheets
     result = sheets_service.spreadsheets().get(
         spreadsheetId=spreadsheet_id,
         fields="sheets(data(rowData(values(userEnteredFormat(backgroundColor,textFormat)))))",
-        ranges=f"{sheet_id}!A:J"  # Adjust range as needed
+        ranges=[f"{sheet_id}!A1:J1", range]  # Adjust range as needed
     ).execute()
 
     # Extract background and text color data
     color_map = {}
     try:
-        # Iterate through each row and each cell in the row
-        for row_index, row in enumerate(result["sheets"][0]["data"][0]["rowData"]):
-            for col_index, cell in enumerate(row.get("values", [])):
-                bg_color = cell.get("userEnteredFormat", {}).get("backgroundColor", {})
-                text_color = cell.get("userEnteredFormat", {}).get("textFormat", {}).get("foregroundColor", {})
-                
-                # Convert colors to RGB tuples (scaled to 255)
-                background_rgb = (
-                    int(bg_color.get("red", 1) * 255),
-                    int(bg_color.get("green", 1) * 255),
-                    int(bg_color.get("blue", 1) * 255)
-                )
-                text_rgb = (
-                    int(text_color.get("red", 0) * 255),
-                    int(text_color.get("green", 0) * 255),
-                    int(text_color.get("blue", 0) * 255)
-                )
+        # Process each range result separately
+        for sheet_data in result["sheets"][0]["data"]:
+            row_data = sheet_data.get("rowData", [])
+            for row_index, row in enumerate(row_data):
+                for col_index, cell in enumerate(row.get("values", [])):
+                    # Extract colors
+                    bg_color = cell.get("userEnteredFormat", {}).get("backgroundColor", {})
+                    text_color = cell.get("userEnteredFormat", {}).get("textFormat", {}).get("foregroundColor", {})
 
-                # Store both background and text colors in the color map
-                color_map[(row_index, col_index)] = {"background": background_rgb, "text": text_rgb}
-    except KeyError:
-        print("Error: Failed to parse the sheet's formatting.")
+                    # Convert colors to RGB tuples (scaled to 255)
+                    background_rgb = (
+                        int(bg_color.get("red", 1) * 255),
+                        int(bg_color.get("green", 1) * 255),
+                        int(bg_color.get("blue", 1) * 255)
+                    )
+                    text_rgb = (
+                        int(text_color.get("red", 0) * 255),
+                        int(text_color.get("green", 0) * 255),
+                        int(text_color.get("blue", 0) * 255)
+                    )
+
+                    # Store colors in color_map with an adjusted row index for each range
+                    # Adjust row_index to reflect the actual row number in the sheet
+                    if sheet_data == result["sheets"][0]["data"][0]:  # First range (A1:J1)
+                        adjusted_row_index = row_index
+                    else:  # Second range (A2:J10)
+                        adjusted_row_index = row_index + 1  # Adjust based on range offset
+
+                    color_map[(adjusted_row_index, col_index)] = {"background": background_rgb, "text": text_rgb}
+
+    except KeyError as e:
+        print(f"Error accessing formatting data: {e}")
 
     return color_map
 
@@ -1035,8 +1091,9 @@ def create_image_from_data(data, highlight_colors):
             # Draw the border around each cell
             draw.rectangle([x, y, x + col_width, y + row_height], outline=line_color)
 
-    # Save the image
-    image_path = "/tmp/sheet_table.png"
+    # Use tempfile to create a temporary file path for the image
+    with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp_file:
+        image_path = tmp_file.name
     image.save(image_path)
     return image_path
 
@@ -1076,15 +1133,17 @@ async def send_sheet_image(ctx, *args):
         await ctx.send(f"No schedule on {date_str}.")
         return
 
-    bg_color = get_sheet_formatting(spreadsheet_id, "schedule", sheets_service)
-    # Generate the image from data
+    schedule_rows = get_row_ranges(spreadsheet_id,target_date)
+    bg_color = get_sheet_formatting(spreadsheet_id, "schedule", sheets_service,schedule_rows)
+    
     image_path = create_image_from_data(data, bg_color)
-
     # Send the image in Discord
     with open(image_path, "rb") as f:
         picture = discord.File(f)
-        await ctx.send(f"Here is the current schedule for {date_str}:",
-                       file=picture)
+        await ctx.send(f"Here is the current schedule for {date_str}:", file=picture)
+
+    # Clean up the temporary file after sending
+    os.remove(image_path)
 
 
 # -----------------------Send alert 15mins ahead-----------------------
