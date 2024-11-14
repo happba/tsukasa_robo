@@ -34,6 +34,15 @@ async def on_ready():
     print('------')
 
 
+# Initialize an empty dictionary to store user IDs and names
+user_data = {}
+# Load the dictionary from a JSON file at startup for persistence
+try:
+    with open("user_data.json", "r") as file:
+        user_data = json.load(file)
+except (FileNotFoundError, json.JSONDecodeError):
+    user_data = {}
+
 def calculate_skill_sum(skill_components):
     return sum(skill_components)
 
@@ -324,14 +333,55 @@ async def 倍率(ctx, a: int, b: int, c: int, d: int, e: int):
     await ctx.send(f'内部值: {overall_skill}，倍率: {multiplier:.2f}')
 
 
-@bot.command(name='reg', help='Register or update user profile')
+
+#update names in schedule
+#Function to update all instances of the old name in the schedule sheet
+def update_name_in_sheet(spreadsheet_id, sheet_name, old_name, new_name, sheets_service):
+    # Fetch the entire schedule sheet data
+    range_to_search = f"{sheet_name}!A:Z"  # Adjust range if the sheet is larger
+    result = sheets_service.spreadsheets().values().get(
+        spreadsheetId=spreadsheet_id,
+        range=range_to_search
+    ).execute()
+
+    # Track all cell locations to update
+    updates = []
+    rows = result.get("values", [])
+    
+    for row_index, row in enumerate(rows):
+        for col_index, cell_value in enumerate(row):
+            if cell_value == old_name:
+                # Track the cell's A1 notation (e.g., A1, B2)
+                cell_location = f"{sheet_name}!{chr(65 + col_index)}{row_index + 1}"
+                updates.append({
+                    "range": cell_location,
+                    "values": [[new_name]]
+                })
+
+    # Perform batch update to replace all occurrences of the old name
+    if updates:
+        sheets_service.spreadsheets().values().batchUpdate(
+            spreadsheetId=spreadsheet_id,
+            body={
+                "valueInputOption": "USER_ENTERED",
+                "data": updates
+            }
+        ).execute()
+        return True
+    return False
+
+#register user profile
+@bot.command(name='reg', aliases = ["r"], help='Register or update user profile')
 async def reg(ctx, *, skill_info: str):
     global spreadsheet_data
+    global user_data
 
     guild_id = str(ctx.guild.id)
     spreadsheet_id = spreadsheet_data.get(guild_id)
 
-    user_name = str(ctx.message.author.id)
+    user_id = str(ctx.message.author.id)
+    old_name = user_data.get(user_id, ctx.author.display_name)  # Default to current display name if not found
+
 
 
     if not spreadsheet_id:
@@ -345,6 +395,8 @@ async def reg(ctx, *, skill_info: str):
         return
 
     name, role, power, *skills = components
+    
+
 
     try:
         skills = [int(x) for x in skills]
@@ -356,7 +408,15 @@ async def reg(ctx, *, skill_info: str):
     skill_mult = calculate_skill_multi(skills)
 
     # Prepare the user profile data
-    user_profile = [user_name, name, role, power, skill_sum, skill_mult]
+    user_profile = [user_id, name, role, power, skill_sum, skill_mult]
+
+    # Update the dictionary with the new name
+    user_data[user_id] = name
+    
+    # Save the updated dictionary to a JSON file for persistence
+    with open("user_data.json", "w") as file:
+        json.dump(user_data, file)
+
 
     try:
         # Fetch existing profiles to find the user's row if it exists
@@ -366,12 +426,20 @@ async def reg(ctx, *, skill_info: str):
             "Sheet1!A2:F"  # Adjusted range to cover the columns with user profiles
         ).execute()
         values = result.get('values', [])
+        
+                # Update all instances of the old name in the schedule sheet
+        print(f"old name: {old_name}")
+        print(f"new name: {name}")
+        if update_name_in_sheet(spreadsheet_id, "schedule", old_name, name, sheets_service):
+            pass
+        else:
+            pass
 
         # Find the row if the user already has a profile
         user_row = None
         for i, row in enumerate(values,
                                 start=2):  # Start from row 2 in Google Sheets
-            if row and row[0] == user_name:
+            if row and row[0] == user_id:
                 user_row = i
                 break
 
@@ -403,9 +471,35 @@ async def reg(ctx, *, skill_info: str):
                 f"Registered successfully！:tada:\nName: {name}\nType: {role}\nPower: {power}\nISV total: {skill_sum}\nISV: {skill_mult:.2f}"
             )
 
+
+
     except Exception as e:
         await ctx.send(f"Cannot be written to Google Sheet: {str(e)}")
 
+#Update user displayed name
+@bot.command(name = "rename", help = "rename nickname")
+async def rename(ctx, new_name:str):
+    global user_data
+    global spreadsheet_data
+    
+    guild_id = str(ctx.guild.id)
+    spreadsheet_id = spreadsheet_data[guild_id]
+    
+    # Retrieve user's current stored name
+    user_id = str(ctx.author.id)
+    old_name = user_data.get(user_id, ctx.author.display_name)  # Default to current display name if not found
+
+# Update the name in user_data dictionary and save to JSON
+    user_data[user_id] = new_name
+    with open("user_data.json", "w") as file:
+        json.dump(user_data, file)
+        
+    # Update all instances of the old name in the schedule sheet
+    if update_name_in_sheet(spreadsheet_id, "schedule", old_name, new_name, sheets_service):
+        update_name_in_sheet(spreadsheet_id,"Sheet1",old_name, new_name, sheets_service)
+        await ctx.send(f"You name '{old_name}' have been updated to '{new_name}'.")
+    else:
+        await ctx.send(f"No occurrences of '{old_name}' were registered.")
 
 @bot.command()
 async def greet(ctx):
