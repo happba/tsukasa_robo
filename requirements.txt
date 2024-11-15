@@ -17,10 +17,13 @@ google-api-core==2.22.0
 google-api-python-client==2.151.0
 google-auth==2.36.0
 google-auth-httplib2==0.2.0
+google-auth-oauthlib==1.2.1
 googleapis-common-protos==1.65.0
+gspread==6.1.4
 httplib2==0.22.0
 idna==3.10
 multidict==6.1.0
+oauthlib==3.2.2
 pillow==11.0.0
 propcache==0.2.0
 proto-plus==1.25.0
@@ -32,6 +35,7 @@ python-dateutil==2.9.0.post0
 python-dotenv==1.0.1
 pytz==2024.2
 requests==2.32.3
+requests-oauthlib==2.0.0
 rsa==4.9
 six==1.16.0
 tomli==2.0.2
@@ -41,6 +45,3 @@ tzlocal==5.2
 uritemplate==4.1.1
 urllib3==2.2.3
 yarl==1.17.1
-Flask==3.0.3
-gunicorn==22.0.0
-Werkzeug==3.0.3

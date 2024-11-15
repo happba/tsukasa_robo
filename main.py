@@ -1,6 +1,7 @@
 import os
 import json
 import asyncio
+import gspread
 from re import split
 import interactions
 import discord
@@ -15,6 +16,7 @@ import re
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from PIL import Image, ImageDraw, ImageFont
 import tempfile
+import time
 
 load_dotenv()
 
@@ -165,6 +167,8 @@ credentials = service_account.Credentials.from_service_account_file(
     SERVICE_ACCOUNT_FILE, scopes=SCOPES)
 sheets_service = build('sheets', 'v4', credentials=credentials)
 drive_service = build('drive', 'v3', credentials=credentials)
+gc = gspread.authorize(credentials)
+
 
 #spreadsheet_id = None
 
@@ -175,10 +179,10 @@ async def create_sheet(ctx):
     guild_id = str(ctx.guild.id)
 
     if guild_id in spreadsheet_data:
-        await ctx.send("A Google Sheet already exists for this server.")
+        await ctx.reply("A Google Sheet already exists for this server.")
         return
 
-    #await ctx.send("请提供你的gmail:", ephemeral=True)
+    #await ctx.reply("请提供你的gmail:", ephemeral=True)
 
     def check(m):
         return m.author == ctx.author and isinstance(m.channel,
@@ -267,7 +271,7 @@ async def request_email(ctx):
             "Please provide your email address to gain editing permissions on the schedule."
         )
     except discord.Forbidden:
-        await ctx.send(
+        await ctx.reply(
             "DM request blocked. Please enable DMs from server members.")
         return
 
@@ -303,7 +307,7 @@ async def request_email(ctx):
         # Get the file ID of the Google Sheet (replace with your sheet ID)
         spreadsheet_id = spreadsheet_data.get(str(ctx.guild.id))
         if not spreadsheet_id:
-            await ctx.send(
+            await ctx.reply(
                 "No Google Sheet found for this server. Please create one using $sheet."
             )
             return
@@ -330,7 +334,7 @@ async def request_email(ctx):
 async def 倍率(ctx, a: int, b: int, c: int, d: int, e: int):
     overall_skill = a + b + c + d + e
     multiplier = calculate_skill_multi([a, b, c, d, e])
-    await ctx.send(f'内部值: {overall_skill}，倍率: {multiplier:.2f}')
+    await ctx.reply(f'内部值: {overall_skill}，倍率: {multiplier:.2f}')
 
 
 
@@ -385,13 +389,13 @@ async def reg(ctx, *, skill_info: str):
 
 
     if not spreadsheet_id:
-        await ctx.send("Please first type $sheet to create a Google Sheet.")
+        await ctx.reply("Please first type $sheet to create a Google Sheet.")
         return
 
     # Parse user input
     components = skill_info.split()
     if len(components) != 8:
-        await ctx.send("Wrong format. \n Please register using: Nickname h/r(helper/runner) Power Skill(Leader + 4 member cards) \n E.g. $reg Tsukasa h 33.5 150 150 150 150 150")
+        await ctx.reply("Wrong format. \n Please register using: Nickname h/r(helper/runner) Power Skill(Leader + 4 member cards) \n E.g. $reg Tsukasa h 33.5 150 150 150 150 150")
         return
 
     name, role, power, *skills = components
@@ -401,7 +405,7 @@ async def reg(ctx, *, skill_info: str):
     try:
         skills = [int(x) for x in skills]
     except ValueError:
-        await ctx.send("Wrong ISV. Please provide 5 skills.")
+        await ctx.reply("Wrong ISV. Please provide 5 skills.")
         return
 
     skill_sum = calculate_skill_sum(skills)
@@ -454,7 +458,7 @@ async def reg(ctx, *, skill_info: str):
                 body={
                     "values": [user_profile]
                 }).execute()
-            await ctx.send(
+            await ctx.reply(
                 f"Updated successfully！:tada:\nName: {name}\nType: {role}\nPower: {power}\nISV total: {skill_sum}\nISV: {skill_mult:.2f}"
             )
         else:
@@ -467,14 +471,14 @@ async def reg(ctx, *, skill_info: str):
                 body={
                     "values": [user_profile]
                 }).execute()
-            await ctx.send(
+            await ctx.reply(
                 f"Registered successfully！:tada:\nName: {name}\nType: {role}\nPower: {power}\nISV total: {skill_sum}\nISV: {skill_mult:.2f}"
             )
 
 
 
     except Exception as e:
-        await ctx.send(f"Cannot be written to Google Sheet: {str(e)}")
+        await ctx.reply(f"Cannot be written to Google Sheet: {str(e)}")
 
 #Update user displayed name
 @bot.command(name = "rename", help = "rename nickname")
@@ -497,18 +501,18 @@ async def rename(ctx, new_name:str):
     # Update all instances of the old name in the schedule sheet
     if update_name_in_sheet(spreadsheet_id, "schedule", old_name, new_name, sheets_service):
         update_name_in_sheet(spreadsheet_id,"Sheet1",old_name, new_name, sheets_service)
-        await ctx.send(f"You name '{old_name}' have been updated to '{new_name}'.")
+        await ctx.reply(f"You name '{old_name}' have been updated to '{new_name}'.")
     else:
-        await ctx.send(f"No occurrences of '{old_name}' were registered.")
+        await ctx.reply(f"No occurrences of '{old_name}' were registered.")
 
 @bot.command()
 async def greet(ctx):
-    await ctx.send(":laughing:  未来的大明星向您问好！:wave:")
+    await ctx.reply(":laughing:  未来的大明星向您问好！:wave:")
 
 
 @bot.command()
 async def cat(ctx):
-    await ctx.send("https://media.giphy.com/media/JIX9t2j0ZTN9S/giphy.gif")
+    await ctx.reply("https://media.giphy.com/media/JIX9t2j0ZTN9S/giphy.gif")
 
 
 #------------------------------Create schedule sheet-----------------------
@@ -607,7 +611,7 @@ async def add_schedule(ctx, n: int):
 
     guild_id = str(ctx.guild.id)
     if (guild_id not in (spreadsheet_data)):
-        await ctx.send(
+        await ctx.reply(
             "No Google Sheet found for this server.Please create one using $sheet."
         )
         return
@@ -619,6 +623,37 @@ async def add_schedule(ctx, n: int):
     # Update sheet with new schedule
     update_schedule_sheet(spreadsheet_id, sheets_service, n)
 
+#delete google sheet
+@bot.command(name='delete', help='Delete schedule')
+async def delete_schedule(ctx):
+    global spreadsheet_data
+    guild_id = str(ctx.guild.id)
+    
+    if (guild_id not in (spreadsheet_data)):
+        await ctx.reply(
+            "No Google Sheet to delete for this server."
+        )
+        return
+    spreadsheet_id = (spreadsheet_data[guild_id])
+    
+    try:
+        # Open the Google Sheet and delete all sheets (tabs) within it
+        spreadsheet = gc.open_by_key(spreadsheet_id)
+        worksheet_list = spreadsheet.worksheets()  # Get all worksheets (tabs) within the spreadsheet
+
+        # Open the Google Sheets file and get its file metadata using Google Drive API
+        file = drive_service.files().get(fileId=spreadsheet_id).execute()
+
+        # Delete the Google Sheets file from Google Drive
+        drive_service.files().delete(fileId=spreadsheet_id).execute()
+
+        # Optionally, remove the reference to the spreadsheet from your local data
+        del spreadsheet_data[guild_id]
+
+        await ctx.reply("The Google Sheet has been deleted successfully.")
+    except Exception as e:
+            # Handle errors (e.g., if the sheet can't be found or permissions are incorrect)
+            await ctx.reply(f"An error occurred while deleting the schedule: {e}")
 
 #-------------------------add slot------------------------
 # Helper function to determine the target date based on the offset string
@@ -653,7 +688,7 @@ async def add_user(ctx, *args):
     guild_id = str(ctx.guild.id)
 
     if guild_id not in spreadsheet_data:
-        await ctx.send(
+        await ctx.reply(
             "No Google Sheet found for this server. Please create one using $sheet."
         )
         return
@@ -663,7 +698,7 @@ async def add_user(ctx, *args):
     user_name = get_user_name_by_id(user_id, spreadsheet_id, sheets_service)
 
     if user_name is None:
-        await ctx.send("Register your team first using $reg.")
+        await ctx.reply("Register your team first using $reg.")
         return
 
     # Parse the arguments: check if the first argument is a time range
@@ -673,7 +708,7 @@ async def add_user(ctx, *args):
     elif len(args) == 2:
         date_offset, time_range = args
     else:
-        await ctx.send(
+        await ctx.reply(
             "Invalid command format. Use `$a <time-period>` or `$a t+<n> <time-period>`."
         )
         return
@@ -682,7 +717,7 @@ async def add_user(ctx, *args):
     target_date = get_date_based_on_offset(date_offset)
 
     if target_date is None:
-        await ctx.send(
+        await ctx.reply(
             "Invalid date format. Use 't' for today or 't+<n>' for days ahead."
         )
         return
@@ -701,13 +736,13 @@ async def add_user(ctx, *args):
         #pritn("end time: ", end_time)
 
     except ValueError:
-        await ctx.send(
+        await ctx.reply(
             "Invalid time range format. Please use <start_time>-<end_time> (e.g., 10-15)."
         )
         return
 
     # if start_time >= end_time:
-    #     await ctx.send("Start time must be earlier than end time.")
+    #     await ctx.reply("Start time must be earlier than end time.")
     #     return
 
     # Find the row for the specified date in column A
@@ -723,7 +758,7 @@ async def add_user(ctx, *args):
             break
 
     if date_row_start is None:
-        await ctx.send(f"No entries found for date {date_str}.")
+        await ctx.reply(f"No entries found for date {date_str}.")
         return
 
     # Add the individual time slots between start_time and end_time
@@ -747,7 +782,7 @@ async def add_user(ctx, *args):
                 break
 
     if row_number is None:
-        await ctx.send(
+        await ctx.reply(
             f"Time slot {time_slot} not found for date {date_str}.")
         return    
     
@@ -781,7 +816,7 @@ async def add_user(ctx, *args):
                     break
                 if value == user_name:
                     #col_index = None
-                    await ctx.send(
+                    await ctx.reply(
                         f"You have already added on {date_str} at {''.join(timepoint[0])}."
                     )
                     return
@@ -793,7 +828,7 @@ async def add_user(ctx, *args):
             col_index = 7
 
         if col_index is None:
-            await ctx.send(
+            await ctx.reply(
                 f"Error: Cannot add {user_name} on {date_str} at {time_range}. Please check your time period. "
             )
             return
@@ -812,7 +847,7 @@ async def add_user(ctx, *args):
         row_number += 1
 
 
-    await ctx.send(
+    await ctx.reply(
         f"{user_name} added to schedule on {date_str} for time slots {time_range}."
     )
 
@@ -831,7 +866,7 @@ async def remove_user(ctx, *args):
     guild_id = str(ctx.guild.id)
 
     if guild_id not in spreadsheet_data:
-        await ctx.send(
+        await ctx.reply(
             "No Google Sheet found for this server. Please create one using $sheet."
         )
         return
@@ -841,7 +876,7 @@ async def remove_user(ctx, *args):
     user_name = get_user_name_by_id(user_id, spreadsheet_id, sheets_service)
 
     if user_name is None:
-        await ctx.send("Register your team first using $reg.")
+        await ctx.reply("Register your team first using $reg.")
         return
 
     # Parse the arguments: check if the first argument is a time range
@@ -851,7 +886,7 @@ async def remove_user(ctx, *args):
     elif len(args) == 2:
         date_offset, time_range = args
     else:
-        await ctx.send(
+        await ctx.reply(
             "Invalid command format. Use `$rm <time-period>` or `$rm t+<n> <time-period>`."
         )
         return
@@ -860,7 +895,7 @@ async def remove_user(ctx, *args):
     target_date = get_date_based_on_offset(date_offset)
 
     if target_date is None:
-        await ctx.send(
+        await ctx.reply(
             "Invalid date format. Use 't' for today or 't+<n>' for days ahead."
         )
         return
@@ -875,13 +910,13 @@ async def remove_user(ctx, *args):
         start_time = datetime.strptime(start_time_str, "%H")
         #end_time = datetime.strptime(end_time_str, "%H")
     except ValueError:
-        await ctx.send(
+        await ctx.reply(
             "Invalid time range format. Please use <start_time>-<end_time> (e.g., 10-15)."
         )
         return
 
     # if start_time >= end_time:
-    #     await ctx.send("Start time must be earlier than end time.")
+    #     await ctx.reply("Start time must be earlier than end time.")
     #     return
 
     # Find the row for the specified date in column A
@@ -897,7 +932,7 @@ async def remove_user(ctx, *args):
             break
 
     if date_row_start is None:
-        await ctx.send(f"No entries found for date {date_str}.")
+        await ctx.reply(f"No entries found for date {date_str}.")
         return
 
     # Remove the individual time slots between start_time and end_time
@@ -917,7 +952,7 @@ async def remove_user(ctx, *args):
             break
 
     if row_number is None:
-        await ctx.send(
+        await ctx.reply(
             f"Time slot {time_slot} not found for date {date_str}.")
         return
 
@@ -941,12 +976,12 @@ async def remove_user(ctx, *args):
                     col_index = j
                     break
         else:
-            await ctx.send(
+            await ctx.reply(
                 f"No columns found for time slot {time_slot} at {date_str}.")
             return
 
         if col_index is None:
-            await ctx.send(f"{user_name} is not in the time slot {time_slot}.")
+            await ctx.reply(f"{user_name} is not in the time slot {time_slot}.")
             return
 
         # Clear the user's name from the cell
@@ -962,7 +997,7 @@ async def remove_user(ctx, *args):
         # Move to the next time slot
         row_number +=1
 
-    await ctx.send(
+    await ctx.reply(
         f"{user_name} removed from schedule on {date_str} for time slots {time_range}."
     )
 
@@ -1204,7 +1239,7 @@ async def send_sheet_image(ctx, *args):
     spreadsheet_id = spreadsheet_data[guild_id]
 
     if not spreadsheet_id:
-        await ctx.send(
+        await ctx.reply(
             "Please create a Google Sheet first using the $sheet command.")
         return
 
@@ -1224,7 +1259,7 @@ async def send_sheet_image(ctx, *args):
     # Retrieve data from Google Sheets
     data = get_sheet_data(spreadsheet_id, target_date)
     if not data:
-        await ctx.send(f"No schedule on {date_str}.")
+        await ctx.reply(f"No schedule on {date_str}.")
         return
 
     schedule_rows = get_row_ranges(spreadsheet_id,target_date)
@@ -1234,7 +1269,7 @@ async def send_sheet_image(ctx, *args):
     # Send the image in Discord
     with open(image_path, "rb") as f:
         picture = discord.File(f)
-        await ctx.send(f"Here is the current schedule for {date_str}:", file=picture)
+        await ctx.reply(f"Here is the current schedule for {date_str}:", file=picture)
 
     # Clean up the temporary file after sending
     os.remove(image_path)
@@ -1269,7 +1304,7 @@ async def set_alert(ctx, channel: discord.TextChannel, mins: int):
         alerting_active = True
         bot.loop.create_task(send_alerts())
 
-    await ctx.send(
+    await ctx.reply(
         f"Alert set for {mins} minutes before schedules in {channel.mention}.")
 
 async def send_alerts():
@@ -1376,57 +1411,87 @@ async def send_alerts():
 async def stop_alerts(ctx):
     global alerting_active
     alerting_active = False
-    await ctx.send("Alert task stopped.")
+    await ctx.reply("Alert task stopped.")
 
 
 
 #------------------------HELP Documentation------------------------
 
 
-@bot.command(name='help', aliases=['h'], help='Displays all available commands and their documentation.')
-async def help(ctx):
-    # Define documentation categories with commands
-    categories = {
-        "⭐ Basic Commands": {
-            "$reg <Nickname> <h/r(helper/runner)> <Power> <Skill(leader+4 members)>": 
-                "Registers or updates your profile.\nExample: `$reg Tsukasa h 33.5 150 150 150 150 150`",
-            "$edit": "DMs you to request your email, then adds it with write permissions to the Google Sheet.",
-            "$create_schedule <days>": "Creates a new schedule with time slots for the specified number of days.\n\n"
-        },
-        "📆 Schedule Management": {
-            "$add_schedule <n>": "Generates a schedule for <n> days and adds it to the Google Sheet.",
-            "$add <time-period>": 
-                "Adds you to a specified time slot on the schedule.\nExample: `$add 21-23`, `$+ t+1 4-6`.\nAliases: `$a`, `$+`",
-            "$rm <time-period>": 
-                "Removes you from a specified time slot on the schedule.\nExample: `$rm 21-23`, `$- t+1 4-6`.\nAliases: `$sub`, `$-`",
-            "$s <date-index>": 
-                "Requests the schedule for a specific date.\nExample: `$s t+1`. If nothing is provided, returns today's schedule."
-        }
-    }
-
-    # Create an embedded message
+# Basic commands and schedule commands as separate pages
+def get_basic_commands_embed():
     embed = discord.Embed(
-        title="Tsukasa Help",
-        description="You can interact with Tsukasa in the following ways:",
-        color=0x00ffcc
+        title="Tsukasa Help - Basic Commands",
+        description="> command prefix: $\n\nYou can interact with Tsukasa using the following commands:",
+        color=0xffd438,
+        timestamp=datetime.now()
     )
+    embed.set_author(name="Help",
+                 icon_url="https://i.pinimg.com/736x/34/01/e0/3401e0b0062c26331c93b9c389ed2991.jpg")
 
-    # Add each category and its commands as fields in the embed
-    for category, commands in categories.items():
-        category_content = ""
-        for command, description in commands.items():
-            category_content += f"**※ `{command}`**\n{description}\n\n"
-        embed.add_field(name=category, value=category_content, inline=False)
+    embed.add_field(name="Register profile",
+                value="※ `$reg` `<Nickname>` `<h/r(helper/runner)>` `<Power>` `<Skill(leader+4 members)>`\nE.g. `$reg Tsukasa h 33.5 150 150 150 150 150`\nRegisters or updates your profile.",
+                inline=False)
+    embed.add_field(name="Generate schedule",
+                value="※ `$sheet`\nGenerate a google sheet for this server.\n※ `$edit`\nDMs you to request your email, then adds it with write permissions to the Google Sheet.\n※ `$create_schedule <days>`\nCreates a new schedule with time slots for the specified number of days.",
+                inline=False)
 
-    # Add a footer for additional info
-    # embed.add_field(
-    #     name="Help Documentation",
-    #     value="[Tsukasa Bot Docs](https://bot.lxns.org/docs/)",
-    #     inline=False
-    # )
-    embed.set_footer(text="ツカサ ロボ 2024.")
+    embed.set_footer(text="ツカサ ロボ 2024",
+                 icon_url="https://i.pinimg.com/736x/34/01/e0/3401e0b0062c26331c93b9c389ed2991.jpg")
+    return embed
 
-    # Send the embedded help message
-    await ctx.send(embed=embed)
+def get_schedule_management_embed():
+    embed = discord.Embed(
+        title="Tsukasa Help - Schedule Management",
+        description="> command prefix: $\n\nYou can interact with Tsukasa using the following commands:",
+        color=0xffd438,
+        timestamp=datetime.now()
+        
+    )
+    embed.set_author(name="Help",
+                 icon_url="https://i.pinimg.com/736x/34/01/e0/3401e0b0062c26331c93b9c389ed2991.jpg")
+
+    embed.add_field(name="Add time slot",
+                value="※ ` $add <time-period>`\nAdds you to a specified time slot on the schedule.\nE.g. `$add 21-23`, `$+ t+1 4-6`",
+                inline=False)
+    embed.add_field(name="Remove time slot",
+                value="※ `$rm <time-period>`\nRemoves you from a specified time slot on the schedule.\nE.g. `$rm 21-23`, `$- t+1 4-6`",
+                inline=False)
+    embed.add_field(name="Retrieve schedule",
+                value="※ `$s <date-index>`\nRequests the schedule for a specific date. If no date is specified, return today's schedule.\nE.g. `$s t+1`",
+                inline=False)
+    embed.add_field(name="Schedule reminder",
+                value="※ `$s alarm <channel> <minutes>`\nSet up a reminder to remind scheduled supporters to check-in in <minutes>.",
+                inline=False)
+    
+    embed.set_footer(text="ツカサ ロボ 2024",
+                 icon_url="https://i.pinimg.com/736x/34/01/e0/3401e0b0062c26331c93b9c389ed2991.jpg")
+    return embed
+    
+# Define a View with buttons for pagination
+class HelpView(discord.ui.View):
+    def __init__(self):
+        super().__init__()
+        self.current_page = 0
+        self.pages = [get_basic_commands_embed(), get_schedule_management_embed()]
+
+    @discord.ui.button(label="Basic Commands", style=discord.ButtonStyle.primary, custom_id="basic_commands")
+    async def basic_commands_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        # Show Basic Commands page
+        self.current_page = 0
+        await interaction.response.edit_message(embed=self.pages[self.current_page], view=self)
+
+    @discord.ui.button(label="Schedule Management", style=discord.ButtonStyle.primary, custom_id="schedule_management")
+    async def schedule_management_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        # Show Schedule Management page
+        self.current_page = 1
+        await interaction.response.edit_message(embed=self.pages[self.current_page], view=self)
+
+# Help command with pagination
+
+@bot.command(name='help', aliases=['h'], help='Displays all available commands and their documentation.')
+async def help_command(ctx):
+    view = HelpView()
+    await ctx.reply(embed=view.pages[0], view=view)
 
 bot.run(os.getenv('DISCORD_TOKEN'))
