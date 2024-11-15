@@ -627,6 +627,7 @@ async def add_schedule(ctx, n: int):
 @bot.command(name='delete', help='Delete schedule')
 async def delete_schedule(ctx):
     global spreadsheet_data
+    global drive_service
     guild_id = str(ctx.guild.id)
     
     if (guild_id not in (spreadsheet_data)):
@@ -649,6 +650,9 @@ async def delete_schedule(ctx):
 
         # Optionally, remove the reference to the spreadsheet from your local data
         del spreadsheet_data[guild_id]
+        
+        with open(SPREADSHEET_FILE, 'w') as f:
+            json.dump(spreadsheet_data, f)
 
         await ctx.reply("The Google Sheet has been deleted successfully.")
     except Exception as e:
