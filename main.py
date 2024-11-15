@@ -334,7 +334,7 @@ async def request_email(ctx):
 async def 倍率(ctx, a: int, b: int, c: int, d: int, e: int):
     overall_skill = a + b + c + d + e
     multiplier = calculate_skill_multi([a, b, c, d, e])
-    await ctx.reply(f'内部值: {overall_skill}，倍率: {multiplier:.2f}')
+    await ctx.reply(f'内部值: {overall_skill}，倍率: {multiplier:.2f}，实效值：{(multiplier-1)*100}%')
 
 
 
