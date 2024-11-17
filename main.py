@@ -1425,13 +1425,15 @@ async def stop_alerts(ctx):
 # Basic commands and schedule commands as separate pages
 def get_basic_commands_embed():
     embed = discord.Embed(
-        title="Tsukasa Help - Basic Commands",
-        description="> command prefix: $\n\nYou can interact with Tsukasa using the following commands:",
+        title="Basic Commands",
+        description="> command prefix: $\nYou can interact with Tsukasa using the following commands:\n\n",
         color=0xffd438,
         timestamp=datetime.now()
     )
-    embed.set_author(name="Help",
-                 icon_url="https://i.pinimg.com/736x/34/01/e0/3401e0b0062c26331c93b9c389ed2991.jpg")
+    icon = discord.File("www/images/tks.png", filename="tks.png")
+    
+    embed.set_author(name="Help")
+    embed.add_field(name = chr(173), value = chr(173))
 
     embed.add_field(name="Register profile",
                 value="※ `$reg` `<Nickname>` `<h/r(helper/runner)>` `<Power>` `<Skill(leader+4 members)>`\nE.g. `$reg Tsukasa h 33.5 150 150 150 150 150`\nRegisters or updates your profile.",
@@ -1441,20 +1443,20 @@ def get_basic_commands_embed():
                 inline=False)
 
     embed.set_footer(text="ツカサ ロボ 2024",
-                 icon_url="https://i.pinimg.com/736x/34/01/e0/3401e0b0062c26331c93b9c389ed2991.jpg")
+                 icon_url="attachment://tks.png")
     return embed
 
 def get_schedule_management_embed():
     embed = discord.Embed(
-        title="Tsukasa Help - Schedule Management",
-        description="> command prefix: $\n\nYou can interact with Tsukasa using the following commands:",
+        title="Schedule Management",
+        description="> command prefix: $\n All schedule are set on __**EST**__ timezone",
         color=0xffd438,
         timestamp=datetime.now()
         
     )
-    embed.set_author(name="Help",
-                 icon_url="https://i.pinimg.com/736x/34/01/e0/3401e0b0062c26331c93b9c389ed2991.jpg")
-
+    icon = discord.File("www/images/tks.png", filename="tks.png")
+    embed.set_author(name="Help")
+    embed.add_field(name = chr(173), value = chr(173))
     embed.add_field(name="Add time slot",
                 value="※ ` $add <time-period>`\nAdds you to a specified time slot on the schedule.\nE.g. `$add 21-23`, `$+ t+1 4-6`",
                 inline=False)
@@ -1469,7 +1471,7 @@ def get_schedule_management_embed():
                 inline=False)
     
     embed.set_footer(text="ツカサ ロボ 2024",
-                 icon_url="https://i.pinimg.com/736x/34/01/e0/3401e0b0062c26331c93b9c389ed2991.jpg")
+                 icon_url="attachment://tks.png")
     return embed
     
 # Define a View with buttons for pagination
@@ -1495,7 +1497,8 @@ class HelpView(discord.ui.View):
 
 @bot.command(name='help', aliases=['h'], help='Displays all available commands and their documentation.')
 async def help_command(ctx):
+    icon = discord.File("www/images/tks.png", filename="tks.png")
     view = HelpView()
-    await ctx.reply(embed=view.pages[0], view=view)
+    await ctx.reply(embed=view.pages[0], view=view, file= icon)
 
 bot.run(os.getenv('DISCORD_TOKEN'))
