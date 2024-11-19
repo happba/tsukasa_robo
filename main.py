@@ -22,9 +22,12 @@ load_dotenv()
 
 intents = discord.Intents.all()
 intents.message_content = True
+activity = discord.Game(name="$help")
 bot = commands.Bot(command_prefix='$',
                    help_command=None,
                    description='生活中必不可少的司君.',
+                   activity = activity,
+                   status=discord.Status.idle,
                    intents=intents)
 
 
@@ -221,7 +224,7 @@ async def create_sheet(ctx):
 
         # Set the headers for the schedule sheet
         headers_schedule = [[
-            "EDT", "CST", "PDT", "JST", "runner", "P2", "P3", "P4", "P5"
+            "EST", "CST", "PST", "JST", "Runner", "P2", "P3", "P4", "P5"
         ]]
         sheets_service.spreadsheets().values().update(
             spreadsheetId=spreadsheet_id,
@@ -334,7 +337,13 @@ async def request_email(ctx):
 async def 倍率(ctx, a: int, b: int, c: int, d: int, e: int):
     overall_skill = a + b + c + d + e
     multiplier = calculate_skill_multi([a, b, c, d, e])
-    await ctx.reply(f'内部值: {overall_skill}，倍率: {multiplier:.2f}，实效值：{(multiplier-1)*100}%')
+    await ctx.reply(f'内部值: {overall_skill}，倍率: {multiplier:.2f}，实效值：{int((multiplier - 1) * 100)}%')
+    
+@bot.command()
+async def isv(ctx, a: int, b: int, c: int, d: int, e: int):
+    overall_skill = a + b + c + d + e
+    multiplier = calculate_skill_multi([a, b, c, d, e])
+    await ctx.reply(f'ISV total: {overall_skill}, ISV: {multiplier:.2f}, ISV in game：{int((multiplier - 1) * 100)}%')
 
 
 
@@ -504,10 +513,24 @@ async def rename(ctx, new_name:str):
         await ctx.reply(f"You name '{old_name}' have been updated to '{new_name}'.")
     else:
         await ctx.reply(f"No occurrences of '{old_name}' were registered.")
+        
+
+
+# Update the name in user_data dictionary and save to JSON
+    user_data[user_id] = new_name
+    with open("user_data.json", "w") as file:
+        json.dump(user_data, file)
+        
+    # Update all instances of the old name in the schedule sheet
+    if update_name_in_sheet(spreadsheet_id, "schedule", old_name, new_name, sheets_service):
+        update_name_in_sheet(spreadsheet_id,"Sheet1",old_name, new_name, sheets_service)
+        await ctx.reply(f"You name '{old_name}' have been updated to '{new_name}'.")
+    else:
+        await ctx.reply(f"No occurrences of '{old_name}' were registered.")
 
 @bot.command()
 async def greet(ctx):
-    await ctx.reply(":laughing:  未来的大明星向您问好！:wave:")
+    await ctx.reply(":laughing:天翔けるペガサスと書き、天馬！世界を司ると書き、司！その名も━━天馬司！:wave:")
 
 
 @bot.command()
@@ -1309,7 +1332,7 @@ async def set_alert(ctx, channel: discord.TextChannel, mins: int):
         bot.loop.create_task(send_alerts())
 
     await ctx.reply(
-        f"Alert set for {mins} minutes before schedules in {channel.mention}.")
+        f"Reminder set for {mins} minutes before schedules in {channel.mention}.")
 
 async def send_alerts():
     global alerting_active
@@ -1417,7 +1440,45 @@ async def stop_alerts(ctx):
     alerting_active = False
     await ctx.reply("Alert task stopped.")
 
+# Event listener for new messages
+@bot.event
+async def on_message(message):
+    # Avoid responding to the bot's own messages
+    if message.author.bot:
+        return
 
+    # Check if the channel name starts with "g1-"
+    if message.channel.name.startswith("g1-"):
+        # Regex to find a 5-digit number in the message
+        match = re.fullmatch(r"\d{5}", message.content.strip())
+        if match:
+            try:
+                # Update the channel name to the 5-digit number
+                new_name = match.group()
+                await message.channel.edit(name=f"g1-{new_name}")
+                # Create a success embed
+                embed = discord.Embed(
+                    title="Room Updated",
+                    description=f"Room code updated to `{new_name}`.",
+                    color=discord.Color.green()
+                )
+                await message.channel.send(embed=embed)
+            except discord.Forbidden:
+                # Create a permissions error embed
+                embed = discord.Embed(
+                    title="Error: Forbidden",
+                    description="I lack permissions to change the channel name.",
+                    color=discord.Color.red()
+                )
+                await message.channel.send(embed=embed)
+            except discord.HTTPException as e:
+                # Create a failure embed for HTTP exceptions
+                embed = discord.Embed(
+                    title="Error",
+                    description=f"Failed to update channel name: {e}",
+                    color=discord.Color.red()
+                )
+                await message.channel.send(embed=embed)
 
 #------------------------HELP Documentation------------------------
 
@@ -1426,24 +1487,29 @@ async def stop_alerts(ctx):
 def get_basic_commands_embed():
     embed = discord.Embed(
         title="Basic Commands",
-        description="> command prefix: $\nYou can interact with Tsukasa using the following commands:\n\n",
+        description="> command prefix: $\n",
         color=0xffd438,
         timestamp=datetime.now()
     )
-    icon = discord.File("www/images/tks.png", filename="tks.png")
+    icon = discord.File("www/images/tsukasa_sleep.png", filename="tsukasa_sleep.png")
     
     embed.set_author(name="Help")
-    embed.add_field(name = chr(173), value = chr(173))
-
+    #embed.add_field(name = chr(173), value = chr(173))
+    embed.add_field(name="Calculate ISV",
+                value="※ `$isv` `<Skill(leader+4 members)>` \n E.g. `$isv 150 150 150 150 150`.",
+                inline=False)
     embed.add_field(name="Register profile",
                 value="※ `$reg` `<Nickname>` `<h/r(helper/runner)>` `<Power>` `<Skill(leader+4 members)>`\nE.g. `$reg Tsukasa h 33.5 150 150 150 150 150`\nRegisters or updates your profile.",
                 inline=False)
-    embed.add_field(name="Generate schedule",
-                value="※ `$sheet`\nGenerate a google sheet for this server.\n※ `$edit`\nDMs you to request your email, then adds it with write permissions to the Google Sheet.\n※ `$create_schedule <days>`\nCreates a new schedule with time slots for the specified number of days.",
+    embed.add_field(name="Rename",
+                value="※ `$rename` `<Nickname>` \n E.g. `$rename Kemokemo`\nUpdate your name on schedule.",
                 inline=False)
+    # embed.add_field(name="Generate schedule",
+    #             value="※ `$sheet`\nGenerate a google sheet for this server.\n※ `$edit`\nDMs you to request your email, then adds it with write permissions to the Google Sheet.\n※ `$create_schedule <days>`\nCreates a new schedule with time slots for the specified number of days.",
+    #             inline=False)
 
     embed.set_footer(text="ツカサ ロボ 2024",
-                 icon_url="attachment://tks.png")
+                 icon_url="attachment://tsukasa_sleep.png")
     return embed
 
 def get_schedule_management_embed():
@@ -1454,24 +1520,24 @@ def get_schedule_management_embed():
         timestamp=datetime.now()
         
     )
-    icon = discord.File("www/images/tks.png", filename="tks.png")
+    icon = discord.File("www/images/tsukasa_sleep.png", filename="tsukasa_sleep.png")
     embed.set_author(name="Help")
-    embed.add_field(name = chr(173), value = chr(173))
+    #embed.add_field(name = chr(173), value = chr(173))
     embed.add_field(name="Add time slot",
                 value="※ ` $add <time-period>`\nAdds you to a specified time slot on the schedule.\nE.g. `$add 21-23`, `$+ t+1 4-6`",
                 inline=False)
     embed.add_field(name="Remove time slot",
                 value="※ `$rm <time-period>`\nRemoves you from a specified time slot on the schedule.\nE.g. `$rm 21-23`, `$- t+1 4-6`",
                 inline=False)
-    embed.add_field(name="Retrieve schedule",
+    embed.add_field(name="Obtain schedule",
                 value="※ `$s <date-index>`\nRequests the schedule for a specific date. If no date is specified, return today's schedule.\nE.g. `$s t+1`",
                 inline=False)
-    embed.add_field(name="Schedule reminder",
-                value="※ `$s alarm <channel> <minutes>`\nSet up a reminder to remind scheduled supporters to check-in in <minutes>.",
-                inline=False)
+    # embed.add_field(name="Schedule reminder",
+    #             value="※ `$s alarm <channel> <minutes>`\nSet up a reminder to remind scheduled supporters to check-in in <minutes>.",
+    #             inline=False)
     
     embed.set_footer(text="ツカサ ロボ 2024",
-                 icon_url="attachment://tks.png")
+                 icon_url="attachment://tsukasa_sleep.png")
     return embed
     
 # Define a View with buttons for pagination
@@ -1497,8 +1563,9 @@ class HelpView(discord.ui.View):
 
 @bot.command(name='help', aliases=['h'], help='Displays all available commands and their documentation.')
 async def help_command(ctx):
-    icon = discord.File("www/images/tks.png", filename="tks.png")
+    icon = discord.File("www/images/tsukasa_sleep.png", filename="tsukasa_sleep.png")
     view = HelpView()
     await ctx.reply(embed=view.pages[0], view=view, file= icon)
+    
 
 bot.run(os.getenv('DISCORD_TOKEN'))
