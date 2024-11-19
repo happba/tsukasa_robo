@@ -1,24 +1,24 @@
 import os
 import json
 import asyncio
-# import gspread
-# from re import split
-# import interactions
+import gspread
+from re import split
+import interactions
 import discord
-# from dotenv import load_dotenv
+from dotenv import load_dotenv
 from discord.ext import commands
-# from google.oauth2 import service_account
-# from googleapiclient.discovery import build
-# from googleapiclient.errors import HttpError
+from google.oauth2 import service_account
+from googleapiclient.discovery import build
+from googleapiclient.errors import HttpError
 from datetime import datetime, timedelta
 import pytz
 import re
-# from apscheduler.schedulers.asyncio import AsyncIOScheduler
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from PIL import Image, ImageDraw, ImageFont
 import tempfile
 import time
 
-# load_dotenv()
+load_dotenv()
 
 intents = discord.Intents.all()
 activity = discord.Game(name="$help")
@@ -39,7 +39,6 @@ async def on_ready():
     print(bot.user.name)
     print(bot.user.id)
     print('------')
-    await bot.get_channel(422851664781770753).send("Bot is online")
 
 # Initialize an empty dictionary to store user IDs and names
 user_data = {}
@@ -168,14 +167,14 @@ SCOPES = [
     'https://www.googleapis.com/auth/spreadsheets',
     'https://www.googleapis.com/auth/drive'
 ]
-# credentials = service_account.Credentials.from_service_account_file(
-#     SERVICE_ACCOUNT_FILE, scopes=SCOPES)
-# sheets_service = build('sheets', 'v4', credentials=credentials)
-# drive_service = build('drive', 'v3', credentials=credentials)
-# gc = gspread.authorize(credentials)
+credentials = service_account.Credentials.from_service_account_file(
+    SERVICE_ACCOUNT_FILE, scopes=SCOPES)
+sheets_service = build('sheets', 'v4', credentials=credentials)
+drive_service = build('drive', 'v3', credentials=credentials)
+gc = gspread.authorize(credentials)
 
 
-#spreadsheet_id = None
+# spreadsheet_id = None
 
 
 @bot.command(name='sheet', help='Create a new Google Sheet')
@@ -1452,9 +1451,7 @@ async def stop_alerts(ctx):
 # Event listener for new messages
 @bot.event
 async def on_message(message):
-    
-    print(f"Message from {message.author}: {message.content}")
-    
+
     # Avoid responding to the bot's own messages
     if message.author.bot:
         return
