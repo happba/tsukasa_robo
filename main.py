@@ -21,7 +21,6 @@ import time
 load_dotenv()
 
 intents = discord.Intents.all()
-intents.message_content = True
 activity = discord.Game(name="$help")
 bot = commands.Bot(command_prefix='$',
                    help_command=None,
@@ -30,14 +29,16 @@ bot = commands.Bot(command_prefix='$',
                    status=discord.Status.idle,
                    intents=intents)
 
+lastCheckIn = set()
+
 
 @bot.event
 async def on_ready():
+    await bot.sync_commands()
     print('Logged in as')
     print(bot.user.name)
     print(bot.user.id)
     print('------')
-
 
 # Initialize an empty dictionary to store user IDs and names
 user_data = {}
@@ -173,7 +174,7 @@ drive_service = build('drive', 'v3', credentials=credentials)
 gc = gspread.authorize(credentials)
 
 
-#spreadsheet_id = None
+# spreadsheet_id = None
 
 
 @bot.command(name='sheet', help='Create a new Google Sheet')
@@ -1334,6 +1335,8 @@ async def set_alert(ctx, channel: discord.TextChannel, mins: int):
     await ctx.reply(
         f"Reminder set for {mins} minutes before schedules in {channel.mention}.")
 
+
+
 async def send_alerts():
     global alerting_active
     global spreadsheet_data
@@ -1419,6 +1422,11 @@ async def send_alerts():
                                 f"<@{get_user_id_by_name(name, spreadsheet_data[guild_id], sheets_service)}>"
                                 for name in user_names if name
                             ]
+                            
+                            newSet = set(user_mentions)
+                            
+                            user_mentions = [x for x in user_mentions if x not in lastCheckIn]
+                            lastCheckIn = newSet
 
                             if user_mentions:
                                 message = f"{' '.join(user_mentions)} Your upcoming schedule is in {alert_minutes} minutes! Please react/reply to check in."
@@ -1443,6 +1451,7 @@ async def stop_alerts(ctx):
 # Event listener for new messages
 @bot.event
 async def on_message(message):
+
     # Avoid responding to the bot's own messages
     if message.author.bot:
         return
@@ -1479,6 +1488,9 @@ async def on_message(message):
                     color=discord.Color.red()
                 )
                 await message.channel.send(embed=embed)
+                
+    else:
+        await bot.process_commands(message)
 
 #------------------------HELP Documentation------------------------
 
@@ -1567,5 +1579,5 @@ async def help_command(ctx):
     view = HelpView()
     await ctx.reply(embed=view.pages[0], view=view, file= icon)
     
-
+bot.load_extension('commands.Hours')
 bot.run(os.getenv('DISCORD_TOKEN'))
