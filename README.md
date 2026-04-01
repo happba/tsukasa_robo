@@ -10,6 +10,10 @@ Discord bot for Project Sekai event scheduling backed by Google Sheets.
 - Schedule signup, removal, rendering, and alerting
 - ISV calculator
 
+## Deployment
+
+Fly.io deployment wiring has been removed from this repository. Configure the bot on the hosting platform of your choice by providing the required environment variables and a valid Google service-account file path.
+
 ## Required environment variables
 
 - `DISCORD_TOKEN`
