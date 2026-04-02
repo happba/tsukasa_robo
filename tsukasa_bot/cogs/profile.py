@@ -99,7 +99,6 @@ class ProfileCog(commands.Cog):
         multiplier = calculate_skill_multiplier(skills)
         await interaction.response.send_message(
             f"Skill sum: {total}\nISV: {multiplier:.2f}\nIn-game bonus: {int((multiplier - 1) * 100)}%",
-            ephemeral=True,
         )
 
 

@@ -1,0 +1,16 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Run Tsukasa Bot",
+            "type": "python",
+            "request": "launch",
+            "module": "tsukasa_bot",
+            "console": "integratedTerminal",
+            "cwd": "/Users/aijun/Documents/discord_bot",
+            "justMyCode": true,
+            "envFile": "/Users/aijun/Documents/discord_bot/.env",
+            "python": "/Users/aijun/Documents/discord_bot/.venv/bin/python"
+        }
+    ]
+}

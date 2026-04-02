@@ -45,6 +45,7 @@ class TsukasaBot(commands.Bot):
     async def setup_hook(self) -> None:
         self.google_workspace.validate_connectivity()
         for extension in (
+            "tsukasa_bot.cogs.help",
             "tsukasa_bot.cogs.sheet",
             "tsukasa_bot.cogs.profile",
             "tsukasa_bot.cogs.schedule",
@@ -58,4 +59,3 @@ class TsukasaBot(commands.Bot):
 
     async def on_ready(self) -> None:
         LOGGER.info("Logged in as %s (%s)", self.user, self.user.id if self.user else "unknown")
-
