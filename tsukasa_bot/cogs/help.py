@@ -67,7 +67,7 @@ HELP_SECTIONS: dict[str, HelpSection] = {
     "alerts": HelpSection(
         title="Alerts",
         emoji="🔔",
-        summary="Configure reminder posts for upcoming schedule slots.",
+        summary="Configure reminders for upcoming schedule slots.",
         accent=discord.Color.red(),
         commands=[
             ("/alerts-start <channel> <minutes_before>", "Enable reminders in a channel before each slot."),
@@ -109,6 +109,7 @@ class HelpView(discord.ui.View):
         super().__init__(timeout=300)
         self.author_id = author_id
         self.selected_key = "overview"
+        self.message: discord.Message | None = None
         self.add_item(HelpCategorySelect())
 
     def build_embed(self) -> discord.Embed:
@@ -135,6 +136,8 @@ class HelpView(discord.ui.View):
     async def on_timeout(self) -> None:
         for child in self.children:
             child.disabled = True
+        if self.message is not None:
+            await self.message.edit(view=self)
 
 
 class HelpCog(commands.Cog):
@@ -145,6 +148,7 @@ class HelpCog(commands.Cog):
     async def help_command(self, interaction: discord.Interaction) -> None:
         view = HelpView(interaction.user.id)
         await interaction.response.send_message(embed=view.build_embed(), view=view, ephemeral=True)
+        view.message = await interaction.original_response()
 
 
 async def setup(bot: commands.Bot) -> None:

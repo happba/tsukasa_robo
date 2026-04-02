@@ -49,7 +49,7 @@ class SheetCog(commands.Cog):
             ephemeral=True,
         )
 
-    @app_commands.command(name="sheet-grant-access", description="Grant spreadsheet writer access to an email.")
+    @app_commands.command(name="sheet-grant-access", description="Grant spreadsheet writer access to an email address.")
     async def grant_access(self, interaction: discord.Interaction) -> None:
         await interaction.response.send_modal(GrantAccessModal(self, interaction))
 
@@ -99,7 +99,12 @@ class SheetCog(commands.Cog):
             await interaction.followup.send("No Google Sheet is configured for this server yet.", ephemeral=True)
             return
 
-        self.bot.google_workspace.delete_spreadsheet(sheet["spreadsheet_id"])
+        try:
+            self.bot.google_workspace.delete_spreadsheet(sheet["spreadsheet_id"])
+        except GoogleWorkspaceError as exc:
+            await interaction.followup.send(str(exc), ephemeral=True)
+            return
+
         self.bot.metadata_repository.delete_guild_sheet(guild_id)
         await interaction.followup.send("The Google Sheet was deleted.", ephemeral=True)
 

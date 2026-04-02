@@ -78,6 +78,42 @@ class ScheduleServiceTests(unittest.TestCase):
             self.service.parse_day_offset = original_parse
         self.assertEqual(self.google.batch_updates[-1][0]["range"], "schedule!L2")
 
+    def test_get_slots_for_offset_returns_slot_metadata(self) -> None:
+        self.google.values["schedule!A:ZZ"] = [
+            ["Date", "EST", "CST", "PST", "JST", "Runner", "P2", "P3", "P4", "P5"],
+            ["04-01", "18-19", "17-18", "15-16", "08-09", "Runner1", "A"],
+            ["", "19-20", "18-19", "16-17", "09-10", ""],
+            ["04-02", "00-01", "23-24", "21-22", "14-15", ""],
+        ]
+        original_parse = self.service.parse_day_offset
+        self.service.parse_day_offset = lambda _: type("Parsed", (), {"label": "t", "target_date": datetime(2026, 4, 1)})()
+        try:
+            date_str, slots = self.service.get_slots_for_offset("guild-1", "t")
+        finally:
+            self.service.parse_day_offset = original_parse
+
+        self.assertEqual(date_str, "04-01")
+        self.assertEqual([slot.time_range for slot in slots], ["18-19", "19-20"])
+        self.assertEqual(slots[0].assignments, ["A"])
+
+    def test_add_user_to_slots_updates_multiple_ranges(self) -> None:
+        self.google.values["schedule!A:ZZ"] = [
+            ["Date", "EST", "CST", "PST", "JST", "Runner", "P2", "P3", "P4", "P5"],
+            ["04-01", "18-19", "17-18", "15-16", "08-09", ""],
+            ["", "19-20", "18-19", "16-17", "09-10", ""],
+        ]
+        original_parse = self.service.parse_day_offset
+        self.service.parse_day_offset = lambda _: type("Parsed", (), {"label": "t", "target_date": datetime(2026, 4, 1)})()
+        try:
+            self.service.add_user_to_slots("guild-1", "user-1", "t", ["18-19", "19-20"])
+        finally:
+            self.service.parse_day_offset = original_parse
+
+        self.assertEqual(
+            [update["range"] for update in self.google.batch_updates[-1]],
+            ["schedule!G2", "schedule!G3"],
+        )
+
     def test_remove_user_clears_exact_existing_cell(self) -> None:
         self.google.values["schedule!A:ZZ"] = [
             ["Date", "EST", "CST", "PST", "JST", "Runner", "P2", "P3", "P4", "P5"],

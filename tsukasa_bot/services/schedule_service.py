@@ -27,6 +27,15 @@ class ParsedOffset:
     target_date: datetime
 
 
+@dataclass(frozen=True)
+class ScheduleSlot:
+    date_str: str
+    time_range: str
+    row_index: int
+    start_time: datetime
+    assignments: list[str]
+
+
 class ScheduleService:
     def __init__(
         self,
@@ -45,13 +54,51 @@ class ScheduleService:
             raise ValueError("Days must be at least 1.")
         sheet = self._get_sheet(guild_id)
         rows = self._build_schedule_rows(days)
+        existing_rows = self.google.get_values(sheet["spreadsheet_id"], f"{SCHEDULE_SHEET_NAME}!A2:J")
+        if len(existing_rows) > len(rows):
+            rows.extend([[""] * 10 for _ in range(len(existing_rows) - len(rows))])
         self.google.update_values(f"{SCHEDULE_SHEET_NAME}!A2:J", rows, sheet["spreadsheet_id"])
 
     def add_user_to_range(self, guild_id: str, user_id: str, offset: str, time_range: str) -> str:
         return self._update_assignment(guild_id, user_id, offset, time_range, remove=False)
 
+    def add_user_to_slots(self, guild_id: str, user_id: str, offset: str, time_ranges: list[str]) -> str:
+        if not time_ranges:
+            raise ValueError("Select at least one slot.")
+        return self._update_multiple_assignments(guild_id, user_id, offset, time_ranges, remove=False)
+
     def remove_user_from_range(self, guild_id: str, user_id: str, offset: str, time_range: str) -> str:
         return self._update_assignment(guild_id, user_id, offset, time_range, remove=True)
+
+    def get_slots_for_offset(self, guild_id: str, offset: str) -> tuple[str, list[ScheduleSlot]]:
+        sheet = self._get_sheet(guild_id)
+        parsed = self.parse_day_offset(offset)
+        date_str = parsed.target_date.strftime("%m-%d")
+        values = self.google.get_values(sheet["spreadsheet_id"], f"{SCHEDULE_SHEET_NAME}!A:ZZ")
+        if len(values) <= 1:
+            return date_str, []
+
+        slots: list[ScheduleSlot] = []
+        current_date = ""
+        for row_index, row in enumerate(values[1:], start=2):
+            if row and row[0]:
+                current_date = row[0]
+            if current_date != date_str or len(row) <= 1:
+                continue
+
+            start_hour, end_hour = self.parse_time_range(row[1])
+            slot_start = datetime.combine(parsed.target_date.date(), time(hour=start_hour), tzinfo=self.primary_tz)
+            assignments = [name for name in row[SCHEDULE_ASSIGNMENT_START_COLUMN:] if name]
+            slots.append(
+                ScheduleSlot(
+                    date_str=date_str,
+                    time_range=f"{start_hour:02d}-{end_hour:02d}",
+                    row_index=row_index,
+                    start_time=slot_start,
+                    assignments=assignments,
+                )
+            )
+        return date_str, slots
 
     def get_schedule_for_offset(self, guild_id: str, offset: str) -> tuple[str, list[list[str]], str]:
         sheet = self._get_sheet(guild_id)
@@ -127,14 +174,28 @@ class ScheduleService:
         raise ValueError("Day offset must be `t` or `t+N`.")
 
     def parse_time_range(self, time_range: str) -> tuple[int, int]:
-        start_text, end_text = time_range.split("-", maxsplit=1)
-        start_hour = int(start_text)
-        end_hour = int(end_text)
+        try:
+            start_text, end_text = time_range.split("-", maxsplit=1)
+            start_hour = int(start_text)
+            end_hour = int(end_text)
+        except ValueError as exc:
+            raise ValueError("Time range must use `HH-HH` format, for example `18-20`.") from exc
+
         if not (0 <= start_hour <= 23 and 1 <= end_hour <= 24 and start_hour < end_hour):
-            raise ValueError
+            raise ValueError("Time range must use `HH-HH` format, for example `18-20`.")
         return start_hour, end_hour
 
     def _update_assignment(self, guild_id: str, user_id: str, offset: str, time_range: str, remove: bool) -> str:
+        return self._update_multiple_assignments(guild_id, user_id, offset, [time_range], remove)
+
+    def _update_multiple_assignments(
+        self,
+        guild_id: str,
+        user_id: str,
+        offset: str,
+        time_ranges: list[str],
+        remove: bool,
+    ) -> str:
         sheet = self._get_sheet(guild_id)
         nickname = self.profile_service.get_registered_name(guild_id, user_id)
         if not nickname:
@@ -142,31 +203,37 @@ class ScheduleService:
 
         parsed = self.parse_day_offset(offset)
         date_str = parsed.target_date.strftime("%m-%d")
-        start_hour, end_hour = self.parse_time_range(time_range)
         values = self.google.get_values(sheet["spreadsheet_id"], f"{SCHEDULE_SHEET_NAME}!A:ZZ")
-        start_row_index = self._find_row_index(values, date_str, start_hour)
-        if start_row_index is None:
-            raise ValueError(f"Time slot {start_hour:02d}-{start_hour + 1:02d} was not found for {date_str}.")
-
         updates = []
-        for row_index in range(start_row_index, start_row_index + (end_hour - start_hour)):
-            row = values[row_index - 1] if row_index - 1 < len(values) else []
-            assignments = row[SCHEDULE_ASSIGNMENT_START_COLUMN:]
+        seen_ranges: set[str] = set()
+        for time_range in time_ranges:
+            if time_range in seen_ranges:
+                continue
+            seen_ranges.add(time_range)
 
-            if remove:
-                if nickname not in assignments:
-                    raise ValueError(f"{nickname} is not assigned to one of those slots.")
-                target_column = assignments.index(nickname) + SCHEDULE_ASSIGNMENT_START_COLUMN + 1
-                updates.append(
-                    {"range": f"{SCHEDULE_SHEET_NAME}!{self._column_letter(target_column)}{row_index}", "values": [[""]]}
-                )
-            else:
-                if nickname in assignments:
-                    raise ValueError(f"{nickname} is already assigned to one of those slots.")
-                target_column = self._next_assignment_column(assignments)
-                updates.append(
-                    {"range": f"{SCHEDULE_SHEET_NAME}!{self._column_letter(target_column)}{row_index}", "values": [[nickname]]}
-                )
+            start_hour, end_hour = self.parse_time_range(time_range)
+            start_row_index = self._find_row_index(values, date_str, start_hour)
+            if start_row_index is None:
+                raise ValueError(f"Time slot {start_hour:02d}-{start_hour + 1:02d} was not found for {date_str}.")
+
+            for row_index in range(start_row_index, start_row_index + (end_hour - start_hour)):
+                row = values[row_index - 1] if row_index - 1 < len(values) else []
+                assignments = row[SCHEDULE_ASSIGNMENT_START_COLUMN:]
+
+                if remove:
+                    if nickname not in assignments:
+                        raise ValueError(f"{nickname} is not assigned to one of those slots.")
+                    target_column = assignments.index(nickname) + SCHEDULE_ASSIGNMENT_START_COLUMN + 1
+                    updates.append(
+                        {"range": f"{SCHEDULE_SHEET_NAME}!{self._column_letter(target_column)}{row_index}", "values": [[""]]}
+                    )
+                else:
+                    if nickname in assignments:
+                        raise ValueError(f"{nickname} is already assigned to one of those slots.")
+                    target_column = self._next_assignment_column(assignments)
+                    updates.append(
+                        {"range": f"{SCHEDULE_SHEET_NAME}!{self._column_letter(target_column)}{row_index}", "values": [[nickname]]}
+                    )
 
         self.google.batch_update_values(sheet["spreadsheet_id"], updates)
         return date_str
