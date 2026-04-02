@@ -25,7 +25,6 @@ class AlertsCog(commands.Cog):
         self.bot.alert_service.start(self.bot)
         await interaction.response.send_message(
             f"Alerts enabled for {channel.mention} {minutes_before} minutes before each slot.",
-            ephemeral=True,
         )
 
     @app_commands.command(name="alerts-stop", description="Disable alerts for this server.")
@@ -36,9 +35,8 @@ class AlertsCog(commands.Cog):
             minutes_before=15,
             enabled=False,
         )
-        await interaction.response.send_message("Alerts disabled for this server.", ephemeral=True)
+        await interaction.response.send_message("Alerts disabled for this server.")
 
 
 async def setup(bot: commands.Bot) -> None:
     await bot.add_cog(AlertsCog(bot))
-

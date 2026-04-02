@@ -27,13 +27,12 @@ class SheetCog(commands.Cog):
 
     @app_commands.command(name="sheet-create", description="Create the Google Sheet backing this server.")
     async def create_sheet(self, interaction: discord.Interaction) -> None:
-        await interaction.response.defer(ephemeral=True)
+        await interaction.response.defer()
         guild_id = str(interaction.guild_id)
         existing = self.bot.metadata_repository.get_guild_sheet(guild_id)
         if existing:
             await interaction.followup.send(
                 f"A Google Sheet already exists for this server: {existing['sheet_url']}",
-                ephemeral=True,
             )
             return
 
@@ -46,7 +45,6 @@ class SheetCog(commands.Cog):
         )
         await interaction.followup.send(
             f"Google Sheet created successfully.\n{created['sheet_url']}",
-            ephemeral=True,
         )
 
     @app_commands.command(name="sheet-grant-access", description="Grant spreadsheet writer access to an email address.")
@@ -92,21 +90,21 @@ class SheetCog(commands.Cog):
 
     @app_commands.command(name="sheet-delete", description="Delete this server's Google Sheet.")
     async def delete_sheet(self, interaction: discord.Interaction) -> None:
-        await interaction.response.defer(ephemeral=True)
+        await interaction.response.defer()
         guild_id = str(interaction.guild_id)
         sheet = self.bot.metadata_repository.get_guild_sheet(guild_id)
         if not sheet:
-            await interaction.followup.send("No Google Sheet is configured for this server yet.", ephemeral=True)
+            await interaction.followup.send("No Google Sheet is configured for this server yet.")
             return
 
         try:
             self.bot.google_workspace.delete_spreadsheet(sheet["spreadsheet_id"])
         except GoogleWorkspaceError as exc:
-            await interaction.followup.send(str(exc), ephemeral=True)
+            await interaction.followup.send(str(exc))
             return
 
         self.bot.metadata_repository.delete_guild_sheet(guild_id)
-        await interaction.followup.send("The Google Sheet was deleted.", ephemeral=True)
+        await interaction.followup.send("The Google Sheet was deleted.")
 
 
 async def setup(bot: commands.Bot) -> None:

@@ -31,7 +31,6 @@ class RegisterModal(discord.ui.Modal, title="Register Project Sekai Profile"):
         except ValueError:
             await interaction.response.send_message(
                 "Enter exactly 5 integer skill values separated by spaces.",
-                ephemeral=True,
             )
             return
 
@@ -45,7 +44,7 @@ class RegisterModal(discord.ui.Modal, title="Register Project Sekai Profile"):
                 skills=skills,
             )
         except (GoogleWorkspaceError, ValueError) as exc:
-            await interaction.response.send_message(str(exc), ephemeral=True)
+            await interaction.response.send_message(str(exc))
             return
 
         verb = "Updated" if result.updated else "Registered"
@@ -55,7 +54,6 @@ class RegisterModal(discord.ui.Modal, title="Register Project Sekai Profile"):
             f"Power: {result.power}\n"
             f"Skill sum: {result.skill_sum}\n"
             f"ISV: {result.skill_multiplier:.2f}",
-            ephemeral=True,
         )
 
 
@@ -76,12 +74,11 @@ class ProfileCog(commands.Cog):
                 new_nickname=nickname.strip(),
             )
         except (GoogleWorkspaceError, ValueError) as exc:
-            await interaction.response.send_message(str(exc), ephemeral=True)
+            await interaction.response.send_message(str(exc))
             return
 
         await interaction.response.send_message(
             f"Renamed `{old_name}` to `{nickname}`.",
-            ephemeral=True,
         )
 
     @app_commands.command(name="isv", description="Calculate the Project Sekai skill sum and multiplier.")

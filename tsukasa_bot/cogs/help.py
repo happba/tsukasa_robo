@@ -147,7 +147,7 @@ class HelpCog(commands.Cog):
     @app_commands.command(name="help", description="Browse the bot's commands in an interactive menu.")
     async def help_command(self, interaction: discord.Interaction) -> None:
         view = HelpView(interaction.user.id)
-        await interaction.response.send_message(embed=view.build_embed(), view=view, ephemeral=True)
+        await interaction.response.send_message(embed=view.build_embed(), view=view)
         view.message = await interaction.original_response()
 
 
